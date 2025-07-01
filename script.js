@@ -1,8 +1,4 @@
-   const allowedLat = 26.48663382600949;
-    const allowedLng = 74.63383057745538;
-    const radius = 0.05;
-    const URL = 'https://script.google.com/macros/s/AKfycbzhR-60-AUw2gL6_8ro7Dm3arl0exFNJ0a3n0MYPE-r-s4YwLrJDkJsT31mYk9LqqG92g/exec';
-
+  
     let allData = [];
 
     function goToNextPage() {
@@ -63,67 +59,112 @@
       });
     }
 
-    function getDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon / 2) ** 2;
-      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+   
+ const allowedLat = 26.486691442317298; 
+const allowedLng = 74.63343361051672;
+const radius = 0.05;
+const URL = 'https://script.google.com/macros/s/AKfycbzhR-60-AUw2gL6_8ro7Dm3arl0exFNJ0a3n0MYPE-r-s4YwLrJDkJsT31mYk9LqqG92g/exec';
+
+const studentMap = {
+  "101": "Rahul",
+  "102": "Vishal",
+  "103": "Anjali",
+  "105": "Anju"
+};
+
+let attendanceCache = {};
+
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function sendToGoogleSheet(id, status, lat, lng) {
+  const formData = new URLSearchParams();
+  formData.append("ID", id);
+  formData.append("Status", status);
+  formData.append("Location", `${lat},${lng}`);
+  formData.append("Bypass", "true");
+
+  fetch(URL, { method: "POST", body: formData }).catch(() => {
+    console.warn("❌ Google Sheet store failed silently.");
+  });
+}
+
+async function submitAttendance(status) {
+  const id = document.getElementById("idBox").value.trim();
+  const msg = document.getElementById("msg");
+  const loading = document.getElementById("loading");
+
+  if (!id) {
+    msg.innerHTML = "❌ Please enter ID.";
+    return;
+  }
+
+  const today = new Date().toLocaleDateString();
+  const cacheKey = `${id}_${status}_${today}`;
+  if (attendanceCache[cacheKey]) {
+    msg.innerHTML = `⚠️ ${status} already submitted today.`;
+    return;
+  }
+
+  loading.style.display = "block";
+  msg.innerHTML = "⏳ Please wait...";
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const dist = getDistance(lat, lng, allowedLat, allowedLng);
+
+    if (dist > radius) {
+      loading.style.display = "none";
+      msg.innerHTML = "❌ You are not at the allowed location.";
+      return;
     }
 
-    async function submitAttendance(status) {
-      const id = document.getElementById("idBox").value.trim();
-      const msg = document.getElementById("msg");
-      const loading = document.getElementById("loading");
+    const localName = studentMap[id];
+    const timeNow = new Date().toLocaleTimeString();
 
-      if (!id) {
-        msg.innerHTML = '❌ Please enter ID.';
-        return;
-      }
-
-      loading.style.display = "block";
-      msg.innerHTML = "";
-
-      navigator.geolocation.getCurrentPosition(async pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const dist = getDistance(lat, lng, allowedLat, allowedLng);
-
-        if (dist > radius) {
-          loading.style.display = "none";
-          msg.innerHTML = '❌ You are not at the allowed location.';
-          return;
-        }
-
+    if (localName) {
+      msg.innerHTML = `✅ Hello! <b style="color:#2193b0">${localName}</b> ${status} marked at 🕒 ${timeNow}`;
+      loading.style.display = "none";
+      attendanceCache[cacheKey] = true;
+      sendToGoogleSheet(id, status, lat, lng);
+    } else {
+      try {
         const formData = new URLSearchParams();
-        formData.append('ID', id);
-        formData.append('Status', status);
-        formData.append('Location', `${lat},${lng}`);
+        formData.append("ID", id);
+        formData.append("Status", status);
+        formData.append("Location", `${lat},${lng}`);
 
-        try {
-          const res = await fetch(URL, { method: 'POST', body: formData });
-          const data = await res.json();
-          loading.style.display = "none";
-          if (data.result === 'success') {
-           msg.innerHTML = `✅ Hello ! <span style="color:#1b7c94; font-weight:bold;">${data.name}</span> ${status} marked at 🕒TIME:${data.time}`;
-          } else if (data.result === 'already_done') {
-            msg.innerHTML = `⚠️ ${status} already submitted today.`;
-          } else {
-            msg.innerHTML = `❌ ${data.message || 'Unknown Error'}`;
-          }
-        } catch {
-          loading.style.display = "none";
-          msg.innerHTML = "❌ Fetch error";
-        }
-      }, () => {
+        const res = await fetch(URL, { method: "POST", body: formData });
+        const data = await res.json();
         loading.style.display = "none";
-        msg.innerHTML = "❌ Location access failed.";
-      });
-    }
 
-    async function filterByDate() {
+        if (data.result === "success") {
+          msg.innerHTML = `✅ Hello! <b style="color:#2193b0">${data.name}</b> ${status} marked at 🕒 ${data.time}`;
+          attendanceCache[cacheKey] = true;
+        } else if (data.result === "already_done") {
+          msg.innerHTML = `⚠️ ${status} already submitted today.`;
+        } else {
+          msg.innerHTML = `❌ ${data.message || "Unknown error"}`;
+        }
+      } catch (err) {
+        loading.style.display = "none";
+        msg.innerHTML = "❌ Network error.";
+      }
+    }
+  }, () => {
+    loading.style.display = "none";
+    msg.innerHTML = "❌ Location access failed.";
+  });
+}
+async function filterByDate() {
       const id = document.getElementById("historyIdBox").value.trim();
       const dateInput = document.getElementById("dateInput").value;
       const msg = document.getElementById("historyMsg");
